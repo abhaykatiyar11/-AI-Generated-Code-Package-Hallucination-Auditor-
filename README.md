@@ -2,95 +2,12 @@
 
 The following flowchart illustrates the complete CodeSanitizer workflow, from AI-generated Python code input to security analysis, package verification, remediation, sanitization, and deployment.
 
-```text
-Python Code Input
-        │
-        ▼
-   Python AST Parser
-        │
-        ▼
-   Syntax Validation
-        │
-        ▼
- ┌───────────────────────────────┐
- │   Parallel Security Analysis  │
- ├───────────────────────────────┤
- │ • Dangerous Functions         │
- │ • Hardcoded Secrets           │
- │ • Unsafe Deserialization      │
- │ • Import & Dependency Extract │
- └───────────────┬───────────────┘
-                 │
-                 ▼
-       Package Name Normalization
-                 │
-                 ▼
-    Ignore Python Standard Library
-                 │
-                 ▼
-       Async PyPI Verification
-                 │
-          ┌──────┴──────┐
-          ▼             ▼
-     Package Found   Not Found
-          │             │
-          ▼             ▼
-  Version & Metadata   Potential
-      Retrieved        Hallucination
-          │             │
-          └──────┬──────┘
-                 ▼
-        Aggregate Findings
-                 │
-                 ▼
-          Assign Severity
-                 │
-                 ▼
-     Critical / High / Medium
-          / Low / Info
-                 │
-                 ▼
-       Calculate Security Score
-                 │
-                 ▼
-    Remediation Recommendations
-                 │
-                 ▼
-       Hardcoded Secret Found?
-            ┌────┴────┐
-           Yes        No
-            │          │
-            ▼          ▼
-    Sanitized Code   Continue
-    + .env.example
-    + Download
-            │          │
-            └────┬─────┘
-                 ▼
-       Streamlit Security Dashboard
-                 │
-        ┌────────┼─────────┐
-        ▼        ▼         ▼
-      Score   Findings   Packages
-        │        │         │
-        └────────┼─────────┘
-                 ▼
-      Security Threshold Check
-            ┌────┴────┐
-           PASS      BLOCK
-            │          │
-            └────┬─────┘
-                 ▼
-       Pre-Commit Security Gate
-                 │
-                 ▼
-          GitHub Repository
-                 │
-                 ▼
-     Streamlit Community Cloud
-                 │
-                 ▼
-       Live CodeSanitizer App
+
+<p align="center">
+  <img src="codesanitizer-flow.png.jpeg"
+       alt="CodeSanitizer Technical Flow"
+       width="100%">
+</p>
 
 
 
