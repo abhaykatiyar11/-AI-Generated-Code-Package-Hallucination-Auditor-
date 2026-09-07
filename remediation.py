@@ -1,18 +1,15 @@
-def calculate_score(findings):
-    """Calculates a security score out of 100 based on findings severity."""
-    if not findings:
-        return 100
-    
-    score = 100
-    for finding in findings:
-        severity = getattr(finding, "severity", "Low")
-        if severity == "Critical":
-            score -= 25
-        elif severity == "High":
-            score -= 15
-        elif severity == "Medium":
-            score -= 10
-        elif severity == "Low":
-            score -= 5
-            
-    return max(0, score)
+def generate_remediation(findings: list) -> list[dict]:
+    return [
+        {
+            "severity": f.severity,
+            "category": f.category,
+            "problem": f.message,
+            "fix": f.remediation
+        }
+        for f in findings
+    ]
+
+
+def calculate_score(findings: list) -> int:
+    deduction = sum(f.score for f in findings)
+    return max(0, 100 - deduction)
