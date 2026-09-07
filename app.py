@@ -1,242 +1,89 @@
 import asyncio
-from flask import Flask, render_template_string, request, jsonify
+import streamlit as st
 
-from scanner import scan_source
-from package_checker import verify_packages
-from remediation import calculate_score
-from sanitizer import sanitize_secrets
 from models import Finding
+from package_checker import verify_packages
+from remediation import calculate_security_score, generate_remediation_summary
+from sanitizer import suggest_sanitized_code
+from scanner import scan_source
+from secret_detector import detect_secrets
 
-app = Flask(__name__)
+st.set_page_config(page_title="CodeSanitizer", page_icon="🛡️", layout="wide")
 
-DEFAULT_CODE = '''import subprocess
-import pickle
-import fake_ai_package
+st.title("🛡️ CodeSanitizer — Python Static Analysis")
+st.write("Analyze Python code for security flaws, hardcoded secrets, and dependency supply chain risks.")
 
-API_KEY = "sk-example-secret-key"
+# Input area
+code_input = st.text_area("Paste Python Code Here:", height=300)
 
-user_input = input("Enter command: ")
-eval(user_input)
+if st.button("Run Security Scan", type="primary"):
+    if not code_input.strip():
+        st.warning("Please provide code to scan.")
+    else:
+        # 1. AST Analysis
+        ast_results = scan_source(code_input)
 
-subprocess.run(user_input, shell=True)
-data = pickle.loads(user_input)
-'''
+        if not ast_results["success"]:
+            st.error(f"Syntax Error in input code: {ast_results['syntax_error']}")
+        else:
+            findings: list[Finding] = ast_results["findings"]
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeSanitizer | AI Code Security</title>
-    <style>
-        body {
-            background-color: #0e1117;
-            color: #e6e8eb;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 2rem;
-            display: flex;
-            justify-content: center;
-        }
-        .container {
-            max-width: 900px;
-            width: 100%;
-        }
-        .header-box {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        .header-title {
-            font-size: 2.2rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.2rem;
-        }
-        .header-subtitle {
-            color: #9ca3af;
-            font-size: 0.95rem;
-        }
-        textarea {
-            width: 100%;
-            height: 260px;
-            background-color: #161922;
-            color: #e6e8eb;
-            border: 1px solid #262b36;
-            border-radius: 8px;
-            padding: 12px;
-            font-family: monospace;
-            font-size: 0.9rem;
-            box-sizing: border-box;
-            resize: vertical;
-        }
-        button {
-            width: 100%;
-            background-color: #6366f1;
-            color: #ffffff;
-            border: none;
-            padding: 0.8rem 1rem;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 1rem;
-            transition: background-color 0.2s ease;
-        }
-        button:hover {
-            background-color: #4f46e5;
-        }
-        .results {
-            margin-top: 2rem;
-            background: #161922;
-            border: 1px solid #262b36;
-            padding: 20px;
-            border-radius: 8px;
-        }
-        .metric-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 1.5rem;
-        }
-        .metric-card {
-            background: #0e1117;
-            border: 1px solid #262b36;
-            padding: 12px;
-            border-radius: 6px;
-            text-align: center;
-        }
-        .metric-value {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #6366f1;
-        }
-        .metric-label {
-            font-size: 0.8rem;
-            color: #9ca3af;
-        }
-        .finding-item {
-            background: #0e1117;
-            border-left: 4px solid #ef4444;
-            padding: 10px 15px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-        }
-        .success-box {
-            color: #10b981;
-            background: rgba(16, 185, 129, 0.1);
-            padding: 10px;
-            border-radius: 4px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header-box">
-            <div class="header-title">🛡️ CodeSanitizer</div>
-            <div class="header-subtitle">AI Code Security & Package Hallucination Auditor</div>
-        </div>
+            # 2. Secret Detection
+            secrets = detect_secrets(code_input)
+            for secret in secrets:
+                findings.append(
+                    Finding(
+                        severity="Critical",
+                        category="Hardcoded Secret",
+                        message=f"Detected {secret['name']}",
+                        line=secret["line"],
+                        code=secret["text"],
+                        remediation="Move sensitive keys to environment variables or a secret manager.",
+                    )
+                )
 
-        <form method="POST">
-            <label for="code">Paste Python Source Code</label><br><br>
-            <textarea name="code" id="code">{{ code }}</textarea>
-            <button type="submit">🔍 Scan Code</button>
-        </form>
+            # 3. Async PyPI Check
+            imports = ast_results["imports"]
+            package_results = asyncio.run(verify_packages(imports))
 
-        {% if evaluated %}
-        <div class="results">
-            <div class="metric-grid">
-                <div class="metric-card">
-                    <div class="metric-value">{{ score }}/100</div>
-                    <div class="metric-label">Security Score</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{{ critical_count }}</div>
-                    <div class="metric-label">Critical Issues</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{{ high_count }}</div>
-                    <div class="metric-label">High Issues</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{{ findings|length }}</div>
-                    <div class="metric-label">Total Findings</div>
-                </div>
-            </div>
-
-            <h3>🛡️ Security Findings</h3>
-            {% if not findings %}
-                <div class="success-box">No security vulnerabilities detected.</div>
-            {% else %}
-                {% for finding in findings %}
-                <div class="finding-item">
-                    <strong>[{{ finding.severity }}] {{ finding.category }}</strong><br>
-                    <small>{{ finding.message }}</small><br>
-                    <em>Remediation: {{ finding.remediation }}</em>
-                </div>
-                {% endfor %}
-            {% endif %}
-
-            <h3>📦 Dependencies</h3>
-            {% for pkg in package_results %}
-                {% if pkg.exists %}
-                    <div style="color: #10b981;">✅ <strong>{{ pkg.package }}</strong> — Verified on PyPI (v{{ pkg.version }})</div>
-                {% else %}
-                    <div style="color: #ef4444;">🚨 <strong>{{ pkg.package }}</strong> — Non-existent package (Hallucination Risk)</div>
-                {% endif %}
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-</body>
-</html>
-"""
-
-@app.route("/", methods=["GET", "POST"])
-def index():
-    code = DEFAULT_CODE
-    evaluated = False
-    findings = []
-    package_results = []
-    score = 100
-    critical_count = 0
-    high_count = 0
-
-    if request.method == "POST":
-        code = request.form.get("code", "")
-        evaluated = True
-        result = scan_source(code)
-
-        if result["success"]:
-            findings = result["findings"]
-            package_results = asyncio.run(verify_packages(result["imports"]))
-
-            for pkg in package_results:
-                if pkg["exists"] is False:
+            for pkg_info in package_results:
+                if pkg_info["exists"] is False:
                     findings.append(
                         Finding(
                             severity="High",
-                            category="Package Hallucination",
-                            message=f"Package '{pkg['package']}' does not exist on PyPI.",
-                            remediation="Verify dependency name. AI models often hallucinate non-existent imports."
+                            category="Dependency Risk",
+                            message=f"Imported package '{pkg_info['package']}' was not found on PyPI.",
+                            remediation="Verify package spelling to avoid typosquatting attacks.",
                         )
                     )
 
-            score = calculate_score(findings)
-            critical_count = sum(1 for f in findings if f.severity == "Critical")
-            high_count = sum(1 for f in findings if f.severity == "High")
+            # Dashboard Header Metrics
+            score = calculate_security_score(findings)
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Security Health Score", f"{score}/100")
+            col2.metric("Total Findings", len(findings))
+            col3.metric("Dependencies Checked", len(imports))
 
-    return render_template_string(
-        HTML_TEMPLATE,
-        code=code,
-        evaluated=evaluated,
-        findings=findings,
-        package_results=package_results,
-        score=score,
-        critical_count=critical_count,
-        high_count=high_count
-    )
+            st.divider()
 
-if __name__ == "__main__":
-    app.run(debug=True)
+            # Detailed Results
+            tab1, tab2, tab3 = st.columns(3)
+
+            st.subheader("🔍 Analysis Findings")
+            if not findings:
+                st.success("No security issues detected!")
+            else:
+                for f in findings:
+                    with st.expander(f"[{f.severity}] {f.category} — Line {f.line or 'N/A'}"):
+                        st.write(f"**Message:** {f.message}")
+                        if f.code:
+                            st.code(f.code)
+                        if f.remediation:
+                            st.info(f"**Remediation:** {f.remediation}")
+
+            st.divider()
+
+            # Refactored Code Suggestions
+            st.subheader("✨ Suggested Refactored Code")
+            sanitized = suggest_sanitized_code(code_input)
+            st.code(sanitized, language="python")
