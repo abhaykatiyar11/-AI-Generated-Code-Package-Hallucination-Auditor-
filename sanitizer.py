@@ -1,4 +1,4 @@
-import re
+import sanitize_secrets
 
 def suggest_sanitized_code(code: str) -> str:
     """Basic sanitizer that masks hardcoded secrets and replaces risky functions."""
