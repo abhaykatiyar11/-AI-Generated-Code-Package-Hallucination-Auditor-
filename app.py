@@ -1,5 +1,5 @@
 import asyncio
-import streamlit as st
+from flask import Flask, render_template_string, request, jsonify
 
 from scanner import scan_source
 from package_checker import verify_packages
@@ -7,82 +7,9 @@ from remediation import calculate_score
 from sanitizer import sanitize_secrets
 from models import Finding
 
-# Configure Streamlit Page
-st.set_page_config(
-    page_title="CodeSanitizer | AI Code Security",
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+app = Flask(__name__)
 
-# Custom CSS for modern AI-assistant theme (Claude / ChatGPT style)
-st.markdown("""
-<style>
-    /* Dark theme background */
-    .stApp {
-        background-color: #0e1117;
-        color: #e6e8eb;
-    }
-    
-    /* Center layout constraint */
-    .main .block-container {
-        max-width: 900px !important;
-        padding-top: 2rem !important;
-        padding-bottom: 3rem !important;
-    }
-
-    /* Custom Header Styling */
-    .header-box {
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .header-title {
-        font-size: 2.2rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.2rem;
-    }
-    .header-subtitle {
-        color: #9ca3af;
-        font-size: 0.95rem;
-    }
-
-    /* Metric cards styling */
-    div[data-testid="stMetric"] {
-        background-color: #161922;
-        border: 1px solid #262b36;
-        padding: 12px 16px;
-        border-radius: 8px;
-    }
-
-    /* Primary button style */
-    .stButton > button {
-        width: 100%;
-        background-color: #6366f1;
-        color: #ffffff;
-        border: none;
-        padding: 0.6rem 1rem;
-        border-radius: 8px;
-        font-weight: 600;
-        transition: background-color 0.2s ease;
-    }
-    .stButton > button:hover {
-        background-color: #4f46e5;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# App Header
-st.markdown("""
-<div class="header-box">
-    <div class="header-title">🛡️ CodeSanitizer</div>
-    <div class="header-subtitle">AI Code Security & Package Hallucination Auditor</div>
-</div>
-""", unsafe_allow_html=True)
-
-default_code = '''import subprocess
+DEFAULT_CODE = '''import subprocess
 import pickle
 import fake_ai_package
 
@@ -95,83 +22,221 @@ subprocess.run(user_input, shell=True)
 data = pickle.loads(user_input)
 '''
 
-# Input Code Box
-code = st.text_area("Paste Python Source Code", value=default_code, height=260)
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeSanitizer | AI Code Security</title>
+    <style>
+        body {
+            background-color: #0e1117;
+            color: #e6e8eb;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+        .header-box {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .header-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.2rem;
+        }
+        .header-subtitle {
+            color: #9ca3af;
+            font-size: 0.95rem;
+        }
+        textarea {
+            width: 100%;
+            height: 260px;
+            background-color: #161922;
+            color: #e6e8eb;
+            border: 1px solid #262b36;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        button {
+            width: 100%;
+            background-color: #6366f1;
+            color: #ffffff;
+            border: none;
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: background-color 0.2s ease;
+        }
+        button:hover {
+            background-color: #4f46e5;
+        }
+        .results {
+            margin-top: 2rem;
+            background: #161922;
+            border: 1px solid #262b36;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 1.5rem;
+        }
+        .metric-card {
+            background: #0e1117;
+            border: 1px solid #262b36;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #6366f1;
+        }
+        .metric-label {
+            font-size: 0.8rem;
+            color: #9ca3af;
+        }
+        .finding-item {
+            background: #0e1117;
+            border-left: 4px solid #ef4444;
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .success-box {
+            color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-box">
+            <div class="header-title">🛡️ CodeSanitizer</div>
+            <div class="header-subtitle">AI Code Security & Package Hallucination Auditor</div>
+        </div>
 
-if st.button("🔍 Scan Code"):
-    result = scan_source(code)
+        <form method="POST">
+            <label for="code">Paste Python Source Code</label><br><br>
+            <textarea name="code" id="code">{{ code }}</textarea>
+            <button type="submit">🔍 Scan Code</button>
+        </form>
 
-    if not result["success"]:
-        st.error(f"Python Syntax Error: {result['syntax_error']}")
-    else:
-        findings = result["findings"]
+        {% if evaluated %}
+        <div class="results">
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-value">{{ score }}/100</div>
+                    <div class="metric-label">Security Score</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{{ critical_count }}</div>
+                    <div class="metric-label">Critical Issues</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{{ high_count }}</div>
+                    <div class="metric-label">High Issues</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{{ findings|length }}</div>
+                    <div class="metric-label">Total Findings</div>
+                </div>
+            </div>
 
-        # Asynchronously verify external dependencies
-        with st.spinner("Analyzing imports on PyPI..."):
+            <h3>🛡️ Security Findings</h3>
+            {% if not findings %}
+                <div class="success-box">No security vulnerabilities detected.</div>
+            {% else %}
+                {% for finding in findings %}
+                <div class="finding-item">
+                    <strong>[{{ finding.severity }}] {{ finding.category }}</strong><br>
+                    <small>{{ finding.message }}</small><br>
+                    <em>Remediation: {{ finding.remediation }}</em>
+                </div>
+                {% endfor %}
+            {% endif %}
+
+            <h3>📦 Dependencies</h3>
+            {% for pkg in package_results %}
+                {% if pkg.exists %}
+                    <div style="color: #10b981;">✅ <strong>{{ pkg.package }}</strong> — Verified on PyPI (v{{ pkg.version }})</div>
+                {% else %}
+                    <div style="color: #ef4444;">🚨 <strong>{{ pkg.package }}</strong> — Non-existent package (Hallucination Risk)</div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+"""
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    code = DEFAULT_CODE
+    evaluated = False
+    findings = []
+    package_results = []
+    score = 100
+    critical_count = 0
+    high_count = 0
+
+    if request.method == "POST":
+        code = request.form.get("code", "")
+        evaluated = True
+        result = scan_source(code)
+
+        if result["success"]:
+            findings = result["findings"]
             package_results = asyncio.run(verify_packages(result["imports"]))
 
-        # Flag hallucinated non-existent packages
-        for pkg in package_results:
-            if pkg["exists"] is False:
-                findings.append(
-                    Finding(
-                        severity="High",
-                        category="Package Hallucination",
-                        message=f"Package '{pkg['package']}' does not exist on PyPI.",
-                        remediation="Verify dependency name. AI models often hallucinate non-existent imports."
+            for pkg in package_results:
+                if pkg["exists"] is False:
+                    findings.append(
+                        Finding(
+                            severity="High",
+                            category="Package Hallucination",
+                            message=f"Package '{pkg['package']}' does not exist on PyPI.",
+                            remediation="Verify dependency name. AI models often hallucinate non-existent imports."
+                        )
                     )
-                )
 
-        score = calculate_score(findings)
+            score = calculate_score(findings)
+            critical_count = sum(1 for f in findings if f.severity == "Critical")
+            high_count = sum(1 for f in findings if f.severity == "High")
 
-        st.divider()
+    return render_template_string(
+        HTML_TEMPLATE,
+        code=code,
+        evaluated=evaluated,
+        findings=findings,
+        package_results=package_results,
+        score=score,
+        critical_count=critical_count,
+        high_count=high_count
+    )
 
-        # Score & Summary Section
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Security Score", f"{score}/100")
-        col2.metric("Critical Issues", sum(f.severity == "Critical" for f in findings))
-        col3.metric("High Issues", sum(f.severity == "High" for f in findings))
-        col4.metric("Total Findings", len(findings))
-
-        # Tabs for organized view
-        tab_findings, tab_deps, tab_sanitized = st.tabs(["🛡️ Security Findings", "📦 Dependencies", "🧹 Sanitized Code"])
-
-        with tab_findings:
-            if not findings:
-                st.success("No security vulnerabilities detected.")
-            else:
-                for finding in findings:
-                    with st.expander(f"[{finding.severity}] {finding.category}"):
-                        if finding.line:
-                            st.write(f"**Line:** {finding.line}")
-                        st.write(f"**Details:** {finding.message}")
-                        if finding.code:
-                            st.code(finding.code, language="python")
-                        st.info(f"**Remediation:** {finding.remediation}")
-
-        with tab_deps:
-            if not package_results:
-                st.info("No external imports detected.")
-            else:
-                for pkg in package_results:
-                    if pkg["exists"]:
-                        st.success(f"✅ **{pkg['package']}** — Verified on PyPI (v{pkg['version']})")
-                    elif pkg["exists"] is False:
-                        st.error(f"🚨 **{pkg['package']}** — Non-existent package (Hallucination Risk)")
-                    else:
-                        st.warning(f"⚠️ **{pkg['package']}** — Status unknown ({pkg['error']})")
-
-        with tab_sanitized:
-            sanitized_code, env_example = sanitize_secrets(code)
-
-            if env_example:
-                st.warning("Hardcoded secrets detected and extracted into environment variables.")
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    st.download_button("⬇️ Download .env.example", data=env_example, file_name=".env.example", mime="text/plain")
-                with col_btn2:
-                    st.download_button("⬇️ Download Cleaned Code", data=sanitized_code, file_name="sanitized.py", mime="text/x-python")
-
-                st.code(sanitized_code, language="python")
-            else:
-                st.info("No hardcoded secrets detected in source code.")
+if __name__ == "__main__":
+    app.run(debug=True)
