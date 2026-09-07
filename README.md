@@ -4,14 +4,7 @@ The following flowchart illustrates the complete CodeSanitizer workflow, from AI
 
 ## 🔧 Technical Flow
 
-```md
-## 🔧 Technical Flow
 
-<p align="center">
-  <img src="assets/codesanitizer-flow.png"
-       alt="CodeSanitizer Technical Flow"
-       width="100%">
-</p>
 
 ```text
 Python Code Input
