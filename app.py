@@ -1,89 +1,99 @@
 import asyncio
 import streamlit as st
 
-from models import Finding
-from package_checker import verify_packages
-from remediation import calculate_security_score, generate_remediation_summary
-from sanitizer import suggest_sanitized_code
 from scanner import scan_source
-from secret_detector import detect_secrets
+from package_checker import verify_packages
+from remediation import calculate_score
+from sanitizer import sanitize_secrets
+from models import Finding
 
 st.set_page_config(page_title="CodeSanitizer", page_icon="🛡️", layout="wide")
 
-st.title("🛡️ CodeSanitizer — Python Static Analysis")
-st.write("Analyze Python code for security flaws, hardcoded secrets, and dependency supply chain risks.")
+st.markdown("""
+    <style>
+    .main-title { font-size: 38px; font-weight: 800; margin-bottom: 0; }
+    .subtitle { font-size: 16px; opacity: 0.75; margin-bottom: 20px; }
+    </style>
+""", unsafe_allow_html=True)
 
-# Input area
-code_input = st.text_area("Paste Python Code Here:", height=300)
+st.markdown('<div class="main-title">🛡️ CodeSanitizer</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">AI Code Security & Package Hallucination Auditor</div>', unsafe_allow_html=True)
 
-if st.button("Run Security Scan", type="primary"):
-    if not code_input.strip():
-        st.warning("Please provide code to scan.")
+default_code = '''import subprocess
+import pickle
+import fake_ai_package
+
+API_KEY = "sk-example-secret-key"
+
+user_input = input("Enter command: ")
+eval(user_input)
+
+subprocess.run(user_input, shell=True)
+data = pickle.loads(user_input)
+'''
+
+code = st.text_area("Paste Python Source Code", value=default_code, height=300)
+
+if st.button("🔍 Scan Code", type="primary"):
+    result = scan_source(code)
+
+    if not result["success"]:
+        st.error(f"Python Syntax Error: {result['syntax_error']}")
     else:
-        # 1. AST Analysis
-        ast_results = scan_source(code_input)
+        findings = result["findings"]
 
-        if not ast_results["success"]:
-            st.error(f"Syntax Error in input code: {ast_results['syntax_error']}")
-        else:
-            findings: list[Finding] = ast_results["findings"]
+        with st.spinner("Analyzing packages on PyPI..."):
+            package_results = asyncio.run(verify_packages(result["imports"]))
 
-            # 2. Secret Detection
-            secrets = detect_secrets(code_input)
-            for secret in secrets:
+        for pkg in package_results:
+            if pkg["exists"] is False:
                 findings.append(
                     Finding(
-                        severity="Critical",
-                        category="Hardcoded Secret",
-                        message=f"Detected {secret['name']}",
-                        line=secret["line"],
-                        code=secret["text"],
-                        remediation="Move sensitive keys to environment variables or a secret manager.",
+                        severity="High",
+                        category="Package Hallucination",
+                        message=f"Package '{pkg['package']}' does not exist on PyPI.",
+                        remediation="Verify the dependency name. AI models often hallucinate non-existent imports."
                     )
                 )
 
-            # 3. Async PyPI Check
-            imports = ast_results["imports"]
-            package_results = asyncio.run(verify_packages(imports))
+        score = calculate_score(findings)
 
-            for pkg_info in package_results:
-                if pkg_info["exists"] is False:
-                    findings.append(
-                        Finding(
-                            severity="High",
-                            category="Dependency Risk",
-                            message=f"Imported package '{pkg_info['package']}' was not found on PyPI.",
-                            remediation="Verify package spelling to avoid typosquatting attacks.",
-                        )
-                    )
+        st.divider()
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Security Score", f"{score}/100")
+        col2.metric("Critical", sum(f.severity == "Critical" for f in findings))
+        col3.metric("High", sum(f.severity == "High" for f in findings))
+        col4.metric("Total Issues", len(findings))
 
-            # Dashboard Header Metrics
-            score = calculate_security_score(findings)
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Security Health Score", f"{score}/100")
-            col2.metric("Total Findings", len(findings))
-            col3.metric("Dependencies Checked", len(imports))
+        st.subheader("Security Findings")
+        if not findings:
+            st.success("No security issues detected.")
+        else:
+            for finding in findings:
+                with st.expander(f"[{finding.severity}] {finding.category}"):
+                    if finding.line:
+                        st.write(f"**Line:** {finding.line}")
+                    st.write(f"**Issue:** {finding.message}")
+                    if finding.code:
+                        st.code(finding.code, language="python")
+                    st.info(f"**Fix:** {finding.remediation}")
 
-            st.divider()
-
-            # Detailed Results
-            tab1, tab2, tab3 = st.columns(3)
-
-            st.subheader("🔍 Analysis Findings")
-            if not findings:
-                st.success("No security issues detected!")
+        st.subheader("📦 Dependency Analysis")
+        for pkg in package_results:
+            if pkg["exists"]:
+                st.success(f"✅ {pkg['package']} — PyPI version {pkg['version']}")
+            elif pkg["exists"] is False:
+                st.error(f"🚨 {pkg['package']} — Not found on PyPI")
             else:
-                for f in findings:
-                    with st.expander(f"[{f.severity}] {f.category} — Line {f.line or 'N/A'}"):
-                        st.write(f"**Message:** {f.message}")
-                        if f.code:
-                            st.code(f.code)
-                        if f.remediation:
-                            st.info(f"**Remediation:** {f.remediation}")
+                st.warning(f"⚠️ {pkg['package']} — {pkg['error']}")
 
-            st.divider()
+        st.subheader("🧹 Sanitized Output")
+        sanitized_code, env_example = sanitize_secrets(code)
 
-            # Refactored Code Suggestions
-            st.subheader("✨ Suggested Refactored Code")
-            sanitized = suggest_sanitized_code(code_input)
-            st.code(sanitized, language="python")
+        if env_example:
+            st.warning("Hardcoded secrets detected and converted to environment variables.")
+            st.download_button("⬇️ Download .env.example", data=env_example, file_name=".env.example", mime="text/plain")
+            st.download_button("⬇️ Download Sanitized Code", data=sanitized_code, file_name="sanitized.py", mime="text/x-python")
+            st.code(sanitized_code, language="python")
+        else:
+            st.info("No secrets requiring sanitization were detected.")
