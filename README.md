@@ -85,25 +85,7 @@ Detection    Functions        Detection        Extraction
                     Live Application
 ```
 
-## 🚀 Deployment
 
-CodeSanitizer can be developed locally in VS Code, pushed to GitHub, and deployed through Streamlit Community Cloud.
-
-```text
-VS Code
-   ↓
-Local Testing
-   ↓
-Git Commit
-   ↓
-Git Push
-   ↓
-GitHub Repository
-   ↓
-Streamlit Community Cloud
-   ↓
-Live CodeSanitizer
-```
 
 # 🛡️ CodeSanitizer
 
