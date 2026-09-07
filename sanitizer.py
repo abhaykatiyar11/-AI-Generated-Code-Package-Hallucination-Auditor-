@@ -1,17 +1,33 @@
 import re
 
-def sanitize_secrets(code: str):
-    """Scans code for hardcoded secrets, replaces them, and generates an env template."""
-    env_lines = []
-    sanitized_code = code
 
-    # Pattern to find simple hardcoded API keys or secrets in quotes
-    secret_pattern = re.compile(r'(['"\'])(sk-[a-zA-Z0-9_-]{15,}|secret_[a-zA-Z0-9_-]{15,})\1')
-    matches = secret_pattern.findall(code)
+def sanitize_secrets(source: str):
+    env_variables = []
+    lines = source.splitlines()
+    sanitized = []
 
-    for quote, secret in matches:
-        env_lines.append(f"SECRET_KEY={secret}")
-        sanitized_code = sanitized_code.replace(secret, 'os.getenv("SECRET_KEY")')
+    pattern = re.compile(
+        r"(?P<key>api[_-]?key|apikey|password|passwd|pwd|secret|token|auth[_-]?token)"
+        r"(\s*=\s*)"
+        r"(?P<quote>['\"])(?P<value>[^'\"]+)(?P=quote)",
+        re.IGNORECASE
+    )
 
-    env_example = "\n".join(env_lines) if env_lines else ""
-    return sanitized_code, env_example
+    for line in lines:
+        match = pattern.search(line)
+        if match:
+            key = match.group("key").upper()
+            env_name = re.sub(r"[^A-Z0-9]+", "_", key)
+            env_variables.append(env_name)
+
+            replacement = f"os.getenv('{env_name}')"
+            line = line[:match.start()] + match.group("key") + " = " + replacement + line[match.end():]
+
+        sanitized.append(line)
+
+    sanitized_source = "\n".join(sanitized)
+    if env_variables and "import os" not in sanitized_source:
+        sanitized_source = "import os\n\n" + sanitized_source
+
+    env_example = "\n".join(f"{name}=" for name in sorted(set(env_variables)))
+    return sanitized_source, env_example
