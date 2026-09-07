@@ -4,13 +4,13 @@ from typing import Optional
 
 @dataclass
 class Finding:
-    def __init__(self, severity: str, category: str, message: str, remediation: str = "", line: int = None, code: str = None):
-        self.severity = severity          # "Critical", "High", "Medium", "Low"
-        self.category = category          # e.g., "Package Hallucination", "Hardcoded Secret"
-        self.message = message            # Detailed explanation
-        self.remediation = remediation    # Fix suggestion
-        self.line = line                  # Line number in code
-        self.code = code                  # Snippet causing issue
+    severity: str
+    category: str
+    message: str
+    line: Optional[int] = None
+    column: Optional[int] = None
+    code: Optional[str] = None
+    remediation: Optional[str] = None
 
     @property
     def score(self) -> int:
