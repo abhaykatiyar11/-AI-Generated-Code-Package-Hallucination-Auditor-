@@ -2,10 +2,6 @@
 
 The following flowchart illustrates the complete CodeSanitizer workflow, from AI-generated Python code input to security analysis, package verification, remediation, sanitization, and deployment.
 
-## 🔧 Technical Flow
-
-
-
 ```text
 Python Code Input
         │
