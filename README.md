@@ -2,91 +2,69 @@
 
 The following flowchart illustrates the complete CodeSanitizer workflow, from AI-generated Python code input to security analysis, package verification, remediation, sanitization, and deployment.
 
-```mermaid
-flowchart TD
+Python Code
+    │
+    ▼
+AST Parser
+    │
+    ├── Syntax Error ──► Error
+    │
+    ▼
+AST NodeVisitor
+    │
+    ├── Dangerous Functions
+    ├── Hardcoded Secrets
+    ├── Unsafe Deserialization
+    └── Import Extraction
+             │
+             ▼
+      Package Normalization
+             │
+             ▼
+       PyPI Verification
+             │
+       ┌─────┼─────┐
+       ▼     ▼     ▼
+    Exists  Missing  Timeout
+       │      │        │
+       └──────┼────────┘
+              ▼
+       Finding Aggregator
+              │
+              ▼
+       Severity Assignment
+              │
+              ▼
+        Security Score
+              │
+              ▼
+      Remediation Engine
+              │
+       ┌──────┴──────┐
+       ▼             ▼
+  Sanitized Code   .env.example
+       │             │
+       └──────┬──────┘
+              ▼
+       Streamlit Dashboard
+              │
+       ┌──────┼────────┐
+       ▼      ▼        ▼
+     Score  Findings  Packages
+              │
+              ▼
+       Security Threshold
+          │         │
+        PASS       BLOCK
+          │         │
+          └────┬────┘
+               ▼
+       Pre-Commit Security Gate
+               │
+               ▼
+          GitHub → Streamlit
 
-    A([Start CodeSanitizer]) --> B[Input Python Code]
-
-    B --> C[Parse Code Using Python AST]
-
-    C --> D{Valid Python Syntax?}
-
-    D -- No --> E[Display Syntax Error]
-    E --> Z([End])
-
-    D -- Yes --> F[Traverse AST Using NodeVisitor]
-
-    F --> G{Parallel Security Analysis}
-
-    G --> H[Dangerous Function Detection]
-    G --> I[Hardcoded Secret Detection]
-    G --> J[Unsafe Deserialization Detection]
-    G --> K[Extract Imports & Dependencies]
-
-    K --> L[Normalize Package Names]
-    L --> M[Ignore Python Standard Library]
-    M --> N[Async PyPI Verification]
-
-    N --> O{Package Exists?}
-
-    O -- Yes --> P[Retrieve Package Version & Metadata]
-    O -- No --> Q[Flag Potential Package Hallucination]
-    O -- Error/Timeout --> R[Mark Verification Unavailable]
-
-    H --> S[Aggregate Findings]
-    I --> S
-    J --> S
-    P --> S
-    Q --> S
-    R --> S
-
-    S --> T[Assign Severity]
-
-    T --> U[Critical / High / Medium / Low / Info]
-
-    U --> V[Calculate Security Score]
-
-    V --> W[Generate Remediation Recommendations]
-
-    W --> X{Hardcoded Secret Found?}
-
-    X -- Yes --> Y[Generate Sanitized Code]
-    Y --> Y1[Generate .env.example]
-    Y --> Y2[Enable Sanitized Code Download]
-
-    X -- No --> AA[Continue]
-
-    Y1 --> AB[Streamlit Security Dashboard]
-    Y2 --> AB
-    AA --> AB
-
-    AB --> AC[Display Security Score]
-    AB --> AD[Display Findings by Severity]
-    AB --> AE[Display Package Verification]
-    AB --> AF[Display Remediation Advice]
-
-    AC --> AG{Security Threshold Passed?}
-    AD --> AG
-    AE --> AG
-    AF --> AG
-
-    AG -- Yes --> AH[PASS]
-    AG -- No --> AI[BLOCK]
-
-    AH --> AJ[Pre-Commit Security Gate]
-    AI --> AJ
-
-    AJ --> AK[Push Project to GitHub]
-
-    AK --> AL[GitHub Repository]
-
-    AL --> AM[Connect to Streamlit Community Cloud]
-
-    AM --> AN[Deploy app.py]
-
-    AN --> AO([Live CodeSanitizer Application])
-```
-
+          
 ### 🛡️ Security Analysis Components
 
 | Component                       | Purpose                                                    |
@@ -103,6 +81,7 @@ flowchart TD
 | **`.env.example` Generator**    | Creates a safe environment-variable template               |
 | **Security Dashboard**          | Displays the complete scan results                         |
 | **Pre-Commit Gate**             | Can block commits containing serious vulnerabilities       |
+
 
 ### 🔐 Overall Security Pipeline
 
